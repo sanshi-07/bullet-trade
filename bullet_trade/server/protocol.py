@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import date as Date, datetime
 from typing import Any, Dict
 
 HEADER_SIZE = 4
@@ -12,8 +13,28 @@ class ProtocolError(Exception):
     """Framing 或 JSON 解析异常"""
 
 
+def _json_default(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat(sep=" ")
+    if isinstance(value, Date):
+        return value.isoformat()
+    try:
+        if hasattr(value, "item"):
+            return value.item()
+    except Exception:
+        pass
+    if hasattr(value, "isoformat"):
+        try:
+            return value.isoformat()
+        except Exception:
+            pass
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
 def encode_message(message: Dict[str, Any]) -> bytes:
-    body = json.dumps(message, ensure_ascii=False).encode("utf-8")
+    body = json.dumps(message, ensure_ascii=False, default=_json_default).encode("utf-8")
     if len(body) > MAX_FRAME_SIZE:
         raise ProtocolError("消息过大")
     header = len(body).to_bytes(HEADER_SIZE, "big")
