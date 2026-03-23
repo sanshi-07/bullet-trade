@@ -7,6 +7,7 @@ from bullet_trade.server.adapters.qmt import QmtDataAdapter
 class _FakeProvider:
     def __init__(self) -> None:
         self.last_call = None
+        self.last_trade_days_call = None
 
     def get_price(
         self,
@@ -30,6 +31,14 @@ class _FakeProvider:
             "pre_factor_ref_date": pre_factor_ref_date,
         }
         return pd.DataFrame({"open": [1.0], "close": [2.0]})
+
+    def get_trade_days(self, start_date=None, end_date=None, count=None):
+        self.last_trade_days_call = {
+            "start_date": start_date,
+            "end_date": end_date,
+            "count": count,
+        }
+        return [pd.Timestamp("2025-01-02"), pd.Timestamp("2025-01-03")]
 
 
 @pytest.mark.unit
@@ -61,3 +70,33 @@ async def test_qmt_data_adapter_get_history_passes_fields(monkeypatch):
     assert resp["dtype"] == "dataframe"
     assert resp["columns"] == ["open", "close"]
     assert resp["records"] == [[1.0, 2.0]]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_qmt_data_adapter_get_trade_days_passes_count_and_fallback_keys(monkeypatch):
+    async def _run_now(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr("bullet_trade.server.adapters.qmt._run_in_qmt_executor", _run_now)
+    fake_provider = _FakeProvider()
+    monkeypatch.setattr("bullet_trade.server.adapters.qmt.MiniQMTProvider", lambda _cfg: fake_provider)
+    adapter = QmtDataAdapter()
+
+    resp = await adapter.get_trade_days(
+        {
+            "start_date": "2025-01-01",
+            "end_date": "2025-01-31",
+            "count": 5,
+        }
+    )
+
+    assert fake_provider.last_trade_days_call == {
+        "start_date": "2025-01-01",
+        "end_date": "2025-01-31",
+        "count": 5,
+    }
+    assert resp == {
+        "dtype": "list",
+        "values": ["2025-01-02 00:00:00", "2025-01-03 00:00:00"],
+    }

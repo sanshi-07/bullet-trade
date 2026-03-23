@@ -88,6 +88,20 @@ def _provider_config() -> Dict[str, Any]:
     }
 
 
+def _resolve_start_end(payload: Dict[str, Any]) -> tuple[Any, Any]:
+    """
+    兼容 start/end 与 start_date/end_date 两套字段名。
+    """
+
+    start = payload.get("start")
+    end = payload.get("end")
+    if start in (None, ""):
+        start = payload.get("start_date")
+    if end in (None, ""):
+        end = payload.get("end_date")
+    return start, end
+
+
 class QmtDataAdapter(RemoteDataAdapter):
     def __init__(self) -> None:
         self.provider = MiniQMTProvider(_provider_config())
@@ -105,8 +119,7 @@ class QmtDataAdapter(RemoteDataAdapter):
         
         security = payload.get("security")
         count = payload.get("count")
-        start = payload.get("start")
-        end = payload.get("end")
+        start, end = _resolve_start_end(payload)
         frequency = payload.get("frequency") or payload.get("period")
         fq = payload.get("fq")
         fields = payload.get("fields")
@@ -180,11 +193,11 @@ class QmtDataAdapter(RemoteDataAdapter):
         return tick or {}
 
     async def get_trade_days(self, payload: Dict) -> Dict:
-        start = payload.get("start")
-        end = payload.get("end")
+        start, end = _resolve_start_end(payload)
+        count = payload.get("count")
 
         def _call():
-            return self.provider.get_trade_days(start_date=start, end_date=end)
+            return self.provider.get_trade_days(start_date=start, end_date=end, count=count)
 
         days = await _run_in_qmt_executor(_call)
         return {"dtype": "list", "values": [str(day) for day in days]}
