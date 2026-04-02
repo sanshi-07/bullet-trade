@@ -212,4 +212,5 @@ logs/*
 tests/strategies/~/.bullet-trade/
 ~/
 
+.idea/*
 .idea
