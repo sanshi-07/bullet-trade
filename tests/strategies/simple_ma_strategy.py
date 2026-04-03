@@ -9,6 +9,7 @@
 
 注意：回测配置在 tests/strategies/config.yaml 中定义
 """
+import time
 from jqdata import *
 
 
@@ -54,8 +55,12 @@ def before_market_open(context):
     Args:
         context: 策略上下文
     """
+    func_start = time.time()
+    
     # 获取沪深300成分股
+    t0 = time.time()
     hs300_stocks = get_index_stocks('000300.XSHG')
+    log.info(f"[耗时] 获取成分股: {time.time() - t0:.3f}s")
     
     # 获取过去20天的成交额数据
     # 注意：
@@ -63,6 +68,7 @@ def before_market_open(context):
     #    否则会返回 Panel 对象（已废弃），无法使用 groupby 操作
     # 2. 开盘前不能获取当日的 money 字段数据（聚宽限制）
     #    因此使用 end_date=context.previous_date 和 count，确保不包含当日数据
+    t1 = time.time()
     df = get_price(
         hs300_stocks,
         end_date=context.previous_date,  # 使用前一交易日作为结束日期
@@ -70,15 +76,20 @@ def before_market_open(context):
         fields=['money'],
         panel=False  # 设置为 False 返回 DataFrame，包含 code 列
     )
+    log.info(f"[耗时] 获取成交额数据: {time.time() - t1:.3f}s")
     
     if df is not None and not df.empty:
         # 计算平均成交额
+        t2 = time.time()
         avg_money = df.groupby('code')['money'].mean()
         
         # 选择成交额最大的前10只股票
         context.stock_pool = avg_money.nlargest(10).index.tolist()
+        log.info(f"[耗时] 数据处理: {time.time() - t2:.3f}s")
         
         log.info(f"更新股票池: {context.stock_pool}")
+    
+    log.info(f"[耗时] before_market_open 总计: {time.time() - func_start:.3f}s")
 
 
 def market_open(context):
@@ -88,10 +99,13 @@ def market_open(context):
     Args:
         context: 策略上下文
     """
+    func_start = time.time()
+    
     # 获取当前持仓
     current_positions = list(context.portfolio.positions.keys())
     
     # 遍历股票池
+    t0 = time.time()
     for stock in context.stock_pool:
         # 获取历史数据（需要足够的数据计算均线）
         # 注意：盘中不能获取当日的 close 字段数据（聚宽限制）
@@ -131,4 +145,7 @@ def market_open(context):
             # 卖出全部持仓
             order_target(stock, 0)
             log.info(f"卖出信号: {stock}, 价格={current_price:.2f}, MA5={current_ma:.2f}")
+    
+    log.info(f"[耗时] market_open 遍历{len(context.stock_pool)}只股票: {time.time() - t0:.3f}s")
+    log.info(f"[耗时] market_open 总计: {time.time() - func_start:.3f}s")
 

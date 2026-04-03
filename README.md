@@ -44,12 +44,12 @@
 
 [MIT License](LICENSE)
 
-## 联系与支持
-
-如需交流或反馈，低佣开通QMT等，可扫码添加微信，并在 Issue/PR 中提出建议：
-
-<img src="docs/assets/wechat-contact.png" alt="微信二维码" width="180">
-
----
-
-**⚠️ 风险提示：** 量化交易存在高风险，因策略、配置或软件缺陷/网络异常等导致的任何损失由使用者自行承担，请先在仿真/小仓位充分验证。
+## 拓展
+1.虚拟环境安装cli
+2.策略初始化-skill
+    a.在strategy文件 新增一个策略包
+    b.写策略
+3.策略回测-skill
+    a.执行cli bullet-trade backtest
+    b.读取结果
+4.分析-skill

@@ -25,10 +25,15 @@ def run_backtest(args):
     # 验证策略文件
     strategy_file = Path(args.strategy_file)
     if not strategy_file.exists():
-        print(f"❌ 策略文件不存在: {strategy_file}")
+        print(f"❌ 策略文件不存在：{strategy_file}")
         return 1
     
-    output_dir = Path(args.output).expanduser()
+    # 默认输出到策略文件所在目录，如果指定了 output 参数则使用指定的
+    if hasattr(args, 'output') and args.output:
+        output_dir = Path(args.output).expanduser()
+    else:
+        output_dir = strategy_file.parent.resolve()
+    
     output_dir.mkdir(parents=True, exist_ok=True)
     
     log_file = None

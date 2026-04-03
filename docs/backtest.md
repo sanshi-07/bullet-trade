@@ -49,7 +49,7 @@
 1) 安装与模板：
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -e "bullet-trade[dev]"
+pip install -e ".[dev]"
 cp env.backtest.example .env
 ```
 
@@ -61,13 +61,9 @@ JQDATA_USERNAME=your_username       # 选填，按数据源需要
 JQDATA_PASSWORD=your_password
 ```
 
-3) 运行回测：
+3) 运行回测：M
 ```bash
-bullet-trade backtest strategies/demo_strategy.py \
-  --start 2024-01-01 --end 2024-06-30 \
-  --benchmark 000300.XSHG \
-  --cash 100000 \
-  --output backtest_results/demo
+bullet-trade backtest strategies/simple_ma_strategy.py --start 2024-01-01 --end 2024-06-30 --benchmark 000300.XSHG --cash 100000 --output backtest_results/demo
 ```
 
 > 策略文件使用标准 API：`from jqdata import *`、`order_target_value` 等，无需额外改代码。

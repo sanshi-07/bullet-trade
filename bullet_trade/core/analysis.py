@@ -1599,7 +1599,7 @@ def generate_html_report(results: Dict[str, Any] = None, output_file: Optional[s
         )
     
     # 图2：年收益柱状图，添加数值标注
-    annual_returns = df['daily_returns'].resample('Y').sum() * 100
+    annual_returns = df['daily_returns'].resample('YE').sum() * 100
     annual_years = [d.year for d in annual_returns.index]
     annual_values = annual_returns.values
     fig_annual = go.Figure()
@@ -1615,7 +1615,7 @@ def generate_html_report(results: Dict[str, Any] = None, output_file: Optional[s
     fig_annual.update_layout(title='年收益', xaxis_title='年份', yaxis_title='收益(%)', uniformtext_minsize=8, uniformtext_mode='hide')
     
     # 图3：月度热力图，添加每格标注（正红负绿）
-    monthly_returns = df['daily_returns'].resample('M').sum() * 100
+    monthly_returns = df['daily_returns'].resample('ME').sum() * 100
     heatmap_data = pd.DataFrame({ 'month': monthly_returns.index.month, 'year': monthly_returns.index.year, 'value': monthly_returns.values })
     pivot = heatmap_data.pivot(index='year', columns='month', values='value').fillna(0)
     monthly_colorscale = [[0.0, '#2ca02c'], [0.5, '#ffffbf'], [1.0, '#d62728']]
@@ -1861,7 +1861,7 @@ def generate_html_report(results: Dict[str, Any] = None, output_file: Optional[s
 
     # annual_returns
     try:
-        annual_df = df['daily_returns'].resample('Y').sum().to_frame('annual_returns')
+        annual_df = df['daily_returns'].resample('YE').sum().to_frame('annual_returns')
         annual_df = annual_df.reset_index()
         annual_df.rename(columns={annual_df.columns[0]: 'year'}, inplace=True)
         annual_df['annual_returns'] = annual_df['annual_returns'] * 100.0
