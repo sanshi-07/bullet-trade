@@ -3,7 +3,7 @@
 
 用途
 - 离线验证撮合与分红框架（无需网络，使用内置 ReferenceProvider 固定数据）。
-- 在线对比真实数据源（jqdata/tushare/miniqmt）与“黄金基准”是否一致（可选，需要网络与凭据）。
+- 在线对比真实数据源（jqdata/miniqmt）与”黄金基准”是否一致（可选，需要网络与凭据）。
 
 如何运行（非常明确）
 1) 离线基准（默认，无网络）：
@@ -14,8 +14,7 @@
 
 2) 在线对比（需要网络）：
    - 直接运行（可指定 Provider 列表）：
-     - pytest -q -m requires_network bullet-trade/tests/unit/test_exec_and_dividends_reference.py --live-providers=jqdata
-     - 多 Provider：--live-providers=jqdata,tushare,qmt
+     - pytest -q -m requires_network bullet-trade/tests/unit/test_exec_and_dividends_reference.py --live-providers=miniqmt
    - 想看被跳过的详细原因：追加 -rA -s 查看 skip 信息。
 
 额外注意
@@ -373,21 +372,11 @@ def test_live_provider_trades_and_dividends_match_reference(provider_name):
       - 09:31–15:00 成交价 = 当分钟不复权 close
       - 手续费/税：按本测试中 set_order_cost 配置计算
     """
-    try:
-        from bullet_trade.utils.env_loader import get_env
-    except Exception:
-        get_env = lambda k, d=None: os.environ.get(k, d)
-
-    if provider_name == "jqdata":
-        if not (get_env("JQDATA_USERNAME") and get_env("JQDATA_PASSWORD")):
-            pytest.skip("缺少 JQDATA_USERNAME/JQDATA_PASSWORD，或 .env 未被加载")
+    if provider_name == "miniqmt":
         try:
-            import jqdatasdk  # noqa: F401
-        except Exception:
-            pytest.skip("未安装 jqdatasdk，跳过 jqdata 在线校验")
-    elif provider_name == "tushare":
-        if not get_env("TUSHARE_TOKEN"):
-            pytest.skip("缺少 TUSHARE_TOKEN，跳过 tushare 在线校验")
+            import xtquant  # noqa: F401
+        except ImportError:
+            pytest.skip("未安装 xtquant，跳过 miniqmt 在线校验")
 
     try:
         data_api.set_data_provider(provider_name)

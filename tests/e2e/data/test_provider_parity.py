@@ -7,7 +7,6 @@ import pytest
 
 from bullet_trade.data.providers.jqdata import JQDataProvider
 from bullet_trade.data.providers.miniqmt import MiniQMTProvider
-from bullet_trade.data.providers.tushare import TushareProvider
 from bullet_trade.data import api as data_api
 from bullet_trade.data.api import get_price, set_data_provider
 from bullet_trade.utils.env_loader import load_env
@@ -95,21 +94,6 @@ def _check_jqdata_prerequisites() -> None:
             "缺少必要的环境变量：JQDATA_USERNAME/JQDATA_PASSWORD；"
             "请在 .env 中配置聚宽账号后重试。"
         )
-
-
-def _check_tushare_prerequisites() -> None:
-    _ensure_module("tushare", "pip install tushare")
-    if not os.getenv("TUSHARE_TOKEN"):
-        pytest.skip("缺少必要的环境变量：TUSHARE_TOKEN，请在 .env 中配置后重试。")
-
-
-def _authenticate_tushare() -> TushareProvider:
-    provider = TushareProvider({"cache_dir": None})
-    try:
-        provider.auth()
-    except Exception as exc:  # pragma: no cover - depends on external credentials
-        pytest.skip(f"Tushare 认证失败：{exc}. 请检查 token 或网络。")
-    return provider
 
 
 def _extract_open_close(df: pd.DataFrame) -> Tuple[float, float]:
@@ -312,38 +296,6 @@ def test_ping_an_bank_real_parity() -> None:
     print(f"平安银行 windows {window_desc} parity check passed.")
 
 
-def test_tushare_vs_jqdata_single_day() -> None:
-    """
-    验证 Tushare 与 JQData 在 2025-07-01 的前复权/未复权差异与口径一致性。
-    """
-    _check_jqdata_prerequisites()
-    _check_tushare_prerequisites()
-
-    jq = JQDataProvider({"cache_dir": None})
-    try:
-        jq.auth()
-    except Exception as exc:  # pragma: no cover - depends on external credentials
-        pytest.skip(f"JQData 认证失败：{exc}. 请检查账号或网络。")
-    ts = _authenticate_tushare()
-
-    security = "000001.XSHE"
-    date_str = "2025-07-01"
-
-    jq_none = jq.get_price(security, start_date=date_str, end_date=date_str, fq=None)
-    jq_pre = jq.get_price(security, start_date=date_str, end_date=date_str, fq="pre")
-    ts_none = ts.get_price(security, start_date=date_str, end_date=date_str, fq=None)
-    ts_pre = ts.get_price(security, start_date=date_str, end_date=date_str, fq="pre")
-
-    _assert_pre_diff(jq_none, jq_pre, "JQData")
-    _assert_pre_diff(ts_none, ts_pre, "Tushare")
-
-    jq_open, jq_close = _extract_open_close(jq_pre)
-    ts_open, ts_close = _extract_open_close(ts_pre)
-    epsilon = 0.05
-    assert abs(jq_open - ts_open) <= epsilon
-    assert abs(jq_close - ts_close) <= epsilon
-
-
 def test_multi_provider_single_day_fq_diff() -> None:
     """
     验证多个数据源在同一日期的前复权与未复权存在差异。
@@ -354,8 +306,6 @@ def test_multi_provider_single_day_fq_diff() -> None:
 
     if os.getenv("JQDATA_USERNAME") and os.getenv("JQDATA_PASSWORD"):
         providers.append("jqdata")
-    if os.getenv("TUSHARE_TOKEN"):
-        providers.append("tushare")
     if os.getenv("QMT_DATA_PATH"):
         providers.append("qmt")
     if os.getenv("QMT_SERVER_TOKEN"):

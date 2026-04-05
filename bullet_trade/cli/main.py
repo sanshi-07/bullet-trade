@@ -8,7 +8,6 @@ BulletTrade 命令行主入口
     bullet-trade live strategy.py --broker qmt --runtime-dir runtime/live --log-dir logs/live
     bullet-trade report --input backtest_results/demo --format html --output reports/demo.html
     bullet-trade server --server-type qmt --listen 0.0.0.0 --port 8080
-    bullet-trade lab --notebook-dir notebooks --no-browser --port 8088
     bullet-trade --env-file .env.dev backtest strategy.py --start 2023-01-01 --end 2023-12-31
 """
 
@@ -78,9 +77,6 @@ def create_parser():
 
   # 服务端
   bullet-trade server --server-type qmt --listen 0.0.0.0 --port 8080
-
-  # 研究环境 (JupyterLab)
-  bullet-trade lab
 
   # 切换 env 文件
   bullet-trade --env-file .env.dev backtest strategy.py --start 2023-01-01 --end 2023-12-31
@@ -483,24 +479,6 @@ def create_parser():
         help='关闭请求访问日志'
     )
 
-    # jupyterlab / lab 命令
-    lab_parser = subparsers.add_parser(
-        'lab',
-        aliases=['jupyterlab'],
-        help='启动 BulletTrade 研究环境 (JupyterLab)'
-    )
-    lab_parser.add_argument('--ip', dest='ip', default=None, help='监听地址，默认 127.0.0.1')
-    lab_parser.add_argument('--port', dest='port', type=int, default=None, help='监听端口，默认 8088')
-    lab_parser.add_argument('--notebook-dir', dest='notebook_dir', default=None, help='Notebook 根目录（默认 ~/bullet-trade）')
-    lab_parser.add_argument('--no-browser', dest='no_browser', action='store_true', help='启动时不自动打开浏览器')
-    lab_parser.add_argument('--browser', dest='browser', action='store_true', help='强制启动后打开浏览器')
-    lab_parser.add_argument('--token', dest='token', default=None, help='指定访问 token')
-    lab_parser.add_argument('--no-token', dest='no_token', action='store_true', help='关闭 token 验证（不建议）')
-    lab_parser.add_argument('--password', dest='password', default=None, help='访问密码（可选，建议在公网监听时设置）')
-    lab_parser.add_argument('--certfile', dest='certfile', default=None, help='TLS 证书路径')
-    lab_parser.add_argument('--keyfile', dest='keyfile', default=None, help='TLS 私钥路径')
-    lab_parser.add_argument('--allow-origin', dest='allow_origin', default=None, help='允许的跨域来源')
-    lab_parser.add_argument('--diagnose', dest='diagnose', action='store_true', help='仅做依赖/端口诊断，不启动服务')
     return parser
 
 
@@ -538,10 +516,7 @@ def main():
     elif args.command == 'server':
         from bullet_trade.server.cli import run_server_command
         return run_server_command(args)
-    elif args.command in ('lab', 'jupyterlab'):
-        from bullet_trade.cli.jupyterlab import run_lab
-
-        return run_lab(args)
+    else:
     else:
         print(f"未知命令: {args.command}")
         return 1

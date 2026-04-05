@@ -1,5 +1,5 @@
 """
-JQData 数据模块
+数据模块
 """
 from .api import (
     get_price, attribute_history, get_current_data,

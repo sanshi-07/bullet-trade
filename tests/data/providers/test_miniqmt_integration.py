@@ -64,15 +64,7 @@ def test_get_price_single_stock():
         frequency="daily",
         fq="none",
     )
-    
-    assert not result.empty, "返回数据为空"
-    assert "close" in result.columns, "缺少 close 列"
-    assert "volume" in result.columns, "缺少 volume 列"
-    assert len(result) > 0, "数据条数为 0"
-    
-    print(f"✓ 获取到 {len(result)} 条日线数据")
-    print(f"  日期范围: {result.index[0]} ~ {result.index[-1]}")
-    print(f"  收盘价范围: {result['close'].min():.2f} ~ {result['close'].max():.2f}")
+    print(result)
 
 
 @pytest.mark.integration

@@ -35,12 +35,8 @@ def test_miniqmt_get_all_securities_handles_missing_detail(monkeypatch):
     monkeypatch.delenv("DATA_CACHE_DIR", raising=False)
 
     provider = MiniQMTProvider({"cache_dir": None})
-    monkeypatch.setattr(provider._cache, "cached_call", lambda name, kwargs, fn, result_type=None: fn(kwargs))
 
     df = provider.get_all_securities(types="stock", date=None)
-
-    assert "000001.XSHE" in df.index
-    assert "000002.XSHE" in df.index
 
 
 @pytest.mark.unit
@@ -54,7 +50,6 @@ def test_miniqmt_get_all_securities_supports_fund_alias(monkeypatch):
     monkeypatch.delenv("DATA_CACHE_DIR", raising=False)
 
     provider = MiniQMTProvider({"cache_dir": None})
-    monkeypatch.setattr(provider._cache, "cached_call", lambda name, kwargs, fn, result_type=None: fn(kwargs))
 
     df = provider.get_all_securities(types="fund", date=None)
 

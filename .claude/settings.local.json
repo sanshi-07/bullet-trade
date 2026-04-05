@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Read(//mnt/d/Users/xiaolei.he/Desktop/supercell-tts/**)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''bullet_trade/data/providers/miniqmt.py''\\).read\\(\\)\\); print\\(''Syntax OK''\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('D:/Users/xiaolei.he/Desktop/supercell-tts/bullet-trade/bullet_trade/data/providers/miniqmt.py'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(open\\('D:/Users/xiaolei.he/Desktop/supercell-tts/bullet-trade/bullet_trade/data/providers/miniqmt.py', encoding='utf-8'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
+      "Bash(python -c \"import ast; content = open\\('D:/Users/xiaolei.he/Desktop/supercell-tts/bullet-trade/bullet_trade/data/providers/miniqmt.py', encoding='utf-8'\\).read\\(\\); ast.parse\\(content\\); print\\('Syntax OK'\\)\")",
+      "Bash(cd \"D:/Users/xiaolei.he/Desktop/supercell-tts/bullet-trade\" && python -m pytest tests/ -k miniqmt -x --timeout=10 -q 2>&1 | head -40)",
+      "Bash(cd \"D:/Users/xiaolei.he/Desktop/supercell-tts/bullet-trade\" && python -m pytest tests/ -k miniqmt -x -q 2>&1 | head -60)"
+    ]
+  }
+}

@@ -82,9 +82,6 @@ def _provider_config() -> Dict[str, Any]:
         "data_dir": cfg.get("data_dir"),
         "cache_dir": cfg.get("cache_dir"),
         "market": cfg.get("market"),
-        "auto_download": cfg.get("auto_download"),
-        "tushare_token": cfg.get("tushare_token"),
-        "mode": "live",
     }
 
 
@@ -216,14 +213,12 @@ class QmtDataAdapter(RemoteDataAdapter):
         frequency = payload.get("frequency") or payload.get("period") or "1m"
         start = payload.get("start")
         end = payload.get("end")
-        auto = bool(payload.get("auto_download", True))
         result = await _run_in_qmt_executor(
             self.provider.ensure_cache,
             security,
             frequency,
             start,
             end,
-            auto_download=auto,
         )
         return {"dtype": "dict", "value": result or {}}
 

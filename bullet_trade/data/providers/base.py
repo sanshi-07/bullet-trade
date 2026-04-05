@@ -7,7 +7,7 @@ import pandas as pd
 class DataProvider(ABC):
     """
     抽象数据提供者接口。
-    不同数据源（jqdatasdk、tushare、miniqmt等）实现该接口，
+    不同数据源（jqdatasdk、miniqmt等）实现该接口，
     以便在框架内可插拔切换数据来源。
     """
     name: str = "base"

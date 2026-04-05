@@ -158,18 +158,10 @@ def get_data_provider_config() -> dict:
             'port': get_env_int('JQDATA_PORT', 0),
             'cache_dir': cache_dir_for('jqdata'),
         },
-        'tushare': {
-            'token': get_env('TUSHARE_TOKEN'),
-            'cache_dir': cache_dir_for('tushare'),
-            'tushare_custom_url': get_env('TUSHARE_CUSTOM_URL'),
-        },
         'qmt': {
             'data_dir': get_env('QMT_DATA_PATH'),
-            'auto_download': get_env_optional_bool('MINIQMT_AUTO_DOWNLOAD'),
             'market': get_env('MINIQMT_MARKET'),
             'cache_dir': cache_dir_for('miniqmt'),
-            'tushare_token': get_env('TUSHARE_TOKEN'),
-            'tushare_custom_url': get_env('TUSHARE_CUSTOM_URL'),
         },
         'remote_qmt': {
             'host': get_env('QMT_SERVER_HOST'),

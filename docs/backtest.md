@@ -63,7 +63,7 @@ JQDATA_PASSWORD=your_password
 
 3) 运行回测：M
 ```bash
-bullet-trade backtest strategies/simple_ma_strategy.py --start 2024-01-01 --end 2024-06-30 --benchmark 000300.XSHG --cash 100000 --output backtest_results/demo
+bullet-trade backtest tests/strategies/simple_ma_strategy.py --start 2024-01-01 --end 2024-06-30 --benchmark 000300.XSHG --cash 100000
 ```
 
 > 策略文件使用标准 API：`from jqdata import *`、`order_target_value` 等，无需额外改代码。

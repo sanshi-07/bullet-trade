@@ -1,6 +1,6 @@
 # BulletTrade 数据提供者使用指南
 
-本目录包含使用 BulletTrade 不同数据提供者的示例 notebook。
+本目录包含使用 BulletTrade 不同数据提供者的指南。
 
 
 ## 🆚 数据提供者对比

@@ -27,9 +27,6 @@ _current_context = None
 # 引入可插拔数据提供者，并设置默认Provider
 from .providers.base import DataProvider
 
-# 记录是否已在实盘强制关缓存并提醒过
-_cache_forced_off_warned = False
-
 # 按名称缓存 provider 实例与认证状态，避免重复初始化/认证
 _provider_cache: Dict[str, DataProvider] = {}
 _provider_auth_attempted: Dict[str, bool] = {}
@@ -42,8 +39,6 @@ def _normalize_provider_name(name: Optional[str]) -> str:
     if not name:
         return ""
     lowered = name.lower()
-    if lowered in ("jqdata", "jqdatasdk"):
-        return "jqdata"
     if lowered in ("qmt", "miniqmt"):
         return "miniqmt"
     if lowered in ("qmt-remote", "remote-qmt", "remote_qmt"):
@@ -56,20 +51,10 @@ def _create_provider(provider_name: Optional[str] = None, overrides: Optional[Di
     根据名称创建数据提供者实例，支持读取环境配置并按需覆盖参数。
     """
     config = get_data_provider_config()
-    target = _normalize_provider_name(provider_name or config.get('default') or 'jqdata')
+    target = _normalize_provider_name(provider_name or config.get('default') or 'miniqmt')
     overrides = overrides or {}
 
-    if target == 'jqdata':
-        from .providers.jqdata import JQDataProvider
-        provider_cfg = dict(config.get('jqdata', {}) or {})
-        provider_cfg.update(overrides)
-        return JQDataProvider(provider_cfg)
-    if target in ('tushare',):
-        from .providers.tushare import TushareProvider
-        provider_cfg = dict(config.get('tushare', {}) or {})
-        provider_cfg.update(overrides)
-        return TushareProvider(provider_cfg)
-    if target in ('qmt', 'miniqmt'):
+    if target == 'miniqmt':
         from .providers.miniqmt import MiniQMTProvider
         provider_cfg = dict(config.get('qmt', {}) or {})
         provider_cfg.update(overrides)
@@ -180,29 +165,7 @@ def _sdk_fallback_targets(provider_name: str, provider: DataProvider, method_nam
         attempts.append(label)
         return getattr(obj, method_name, None)
 
-    if normalized == "jqdata":
-        mod = _lazy_import("jqdatasdk")
-        if mod:
-            target = getattr(mod, method_name, None)
-            if target:
-                return target
-    elif normalized == "tushare":
-        client = None
-        ensure_client = getattr(provider, "_ensure_client", None)
-        if callable(ensure_client):
-            try:
-                client = ensure_client()
-            except Exception as exc:
-                errors.append(f"tushare.pro_api() 初始化失败: {exc}")
-        candidate = _get_from(client, "tushare.pro_api()")
-        if candidate:
-            return candidate
-        mod = _lazy_import("tushare")
-        if mod:
-            target = getattr(mod, method_name, None)
-            if target:
-                return target
-    elif normalized in ("miniqmt",):
+    if normalized in ("miniqmt",):
         mod = _lazy_import("xtquant.xtdata")
         if mod:
             target = getattr(mod, method_name, None)
@@ -278,9 +241,9 @@ class SecurityInfo(dict):
 def set_data_provider(provider: Union[DataProvider, str], **provider_kwargs) -> None:
     """
     设置当前数据提供者。
-    支持直接传入 DataProvider 实例，或传入 provider 名称（如 'jqdata'、'tushare'、'miniqmt'）。
+    支持直接传入 DataProvider 实例，或传入 provider 名称（如 'jqdata'、'miniqmt'）。
     """
-    global _provider, _auth_attempted, _security_info_cache, _cache_forced_off_warned
+    global _provider, _auth_attempted, _security_info_cache
     if isinstance(provider, DataProvider):
         _provider = provider
     else:
@@ -292,7 +255,6 @@ def set_data_provider(provider: Union[DataProvider, str], **provider_kwargs) -> 
     _provider_auth_attempted[normalized] = False
     _auth_attempted = False
     _security_info_cache = {}
-    _cache_forced_off_warned = False
     _maybe_disable_cache_for_live(_provider)
     try:
         _provider.auth()
@@ -306,7 +268,7 @@ def reload_data_provider_from_env(provider_name: Optional[str] = None) -> None:
     """
     根据最新环境变量刷新数据提供者实例。
     """
-    global _provider, _auth_attempted, _security_info_cache, _cache_forced_off_warned
+    global _provider, _auth_attempted, _security_info_cache
     _provider = _create_provider(provider_name=provider_name, overrides=None)
     normalized = _normalize_provider_name(getattr(_provider, "name", None))
     _bind_sdk_fallback(_provider, normalized)
@@ -314,7 +276,6 @@ def reload_data_provider_from_env(provider_name: Optional[str] = None) -> None:
     _provider_auth_attempted[normalized] = False
     _auth_attempted = False
     _security_info_cache = {}
-    _cache_forced_off_warned = False
     _maybe_disable_cache_for_live(_provider)
 
 def get_data_provider(provider_name: Optional[str] = None) -> DataProvider:
@@ -355,32 +316,12 @@ def _is_live_mode() -> bool:
         return False
 
 
-def _disable_cache_for_provider(provider: Optional[DataProvider]) -> None:
-    global _cache_forced_off_warned
-    if provider is None:
-        return
-    cache_obj = getattr(provider, "_cache", None)
-    if cache_obj is None or not getattr(cache_obj, "enabled", False):
-        return
-    cache_dir = getattr(cache_obj, "cache_dir", "") or "未配置"
-    cache_obj.enabled = False
-    if not _cache_forced_off_warned:
-        log.warning("实盘模式已强制关闭数据源缓存，原缓存目录: %s", cache_dir)
-        _cache_forced_off_warned = True
-
-
 def _maybe_disable_cache_for_live(provider: Optional[DataProvider] = None) -> None:
     """
     实盘模式下强制关闭数据提供者的磁盘缓存，避免延迟/IO风险。
+    MiniQMT 不使用磁盘缓存，此函数保留为未来扩展。
     """
-    if not _is_live_mode():
-        return
-    if provider is not None:
-        _disable_cache_for_provider(provider)
-        return
-    _disable_cache_for_provider(_provider)
-    for cached in _provider_cache.values():
-        _disable_cache_for_provider(cached)
+    pass
 
 
 def _config_base_dir() -> str:

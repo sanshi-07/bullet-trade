@@ -9,7 +9,6 @@ import pandas as pd
 import logging
 
 from .base import DataProvider
-from ..cache import CacheManager
 
 logger = logging.getLogger(__name__)
 
@@ -35,31 +34,9 @@ class MiniQMTProvider(DataProvider):
 
     def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:
         self.config = config or {}
-        self.data_dir = self.config.get("data_dir") or os.getenv("QMT_DATA_PATH")
-        if self.data_dir:
-            self.config["data_dir"] = self.data_dir
-        cache_dir_set = "cache_dir" in self.config
-        cache_dir = self.config.get("cache_dir")
         self.market = (
             self.config.get("market") or os.getenv("MINIQMT_MARKET") or "SH"
         ).upper()
-        self.mode = (self.config.get("mode") or "backtest").lower()
-        if self.mode not in {"backtest", "live"}:
-            self.mode = "backtest"
-        auto_download = self.config.get("auto_download")
-        if auto_download is None:
-            env_auto_str = os.getenv("MINIQMT_AUTO_DOWNLOAD")
-            if env_auto_str is not None:
-                auto_download = env_auto_str.lower() in ("1", "true", "yes", "on")
-        if auto_download is None:
-            auto_download = self.mode != "live"
-        self.auto_download = bool(auto_download)
-        self.config["auto_download"] = self.auto_download
-        self._cache = CacheManager(
-            provider_name=self.name,
-            cache_dir=cache_dir,
-            fallback_to_env=not cache_dir_set,
-        )
         self._tick_callback = None
 
     # ------------------------ 工具函数 ------------------------
@@ -278,12 +255,7 @@ class MiniQMTProvider(DataProvider):
         port: Optional[int] = None,
     ) -> None:
         _ = user, pwd, host, port
-        xt = self._ensure_xtdata()
-        if not self.data_dir:
-            env_dir = os.getenv("QMT_DATA_PATH")
-            if env_dir:
-                self.data_dir = env_dir
-                self.config["data_dir"] = env_dir
+        self._ensure_xtdata()
 
     # ------------------------ Tick 订阅 ------------------------
     def subscribe_ticks(self, symbols: List[str]) -> None:
@@ -368,40 +340,22 @@ class MiniQMTProvider(DataProvider):
             if normalized not in unique_normalized:
                 unique_normalized.append(normalized)
 
-        cached_frames: Dict[str, pd.DataFrame] = {}
         for normalized in unique_normalized:
-            kwargs = {
-                "security": normalized,
-                "start_date": start_date,
-                "end_date": end_date,
-                "frequency": normalized_frequency,
-                "fields": fields,
-                "skip_paused": skip_paused,
-                "fq": fq,
-                "count": count,
-                "pre_factor_ref_date": pre_factor_ref_date,
-            }
-
-            def _fetch_single(kw: Dict[str, Any]) -> pd.DataFrame:
-                return self._get_price_single(
-                    kw["security"],
-                    start_date=kw.get("start_date"),
-                    end_date=kw.get("end_date"),
-                    frequency=kw.get("frequency", "daily"),
-                    fields=kw.get("fields"),
-                    skip_paused=kw.get("skip_paused", False),
-                    fq=kw.get("fq"),
-                    count=kw.get("count"),
-                    pre_factor_ref_date=kw.get("pre_factor_ref_date"),
-                )
-
-            cached_frames[normalized] = self._cache.cached_call(
-                "get_price", kwargs, _fetch_single, result_type="df"
+            frames[normalized] = self._get_price_single(
+                security=normalized,
+                start_date=start_date,
+                end_date=end_date,
+                frequency=normalized_frequency,
+                fields=fields,
+                skip_paused=skip_paused,
+                fq=fq,
+                count=count,
+                pre_factor_ref_date=pre_factor_ref_date,
             )
 
         for sec in securities:
             normalized = normalized_map[sec]
-            frames[sec] = cached_frames[normalized].copy()
+            frames[sec] = frames[normalized].copy()
 
         if len(frames) == 1:
             return next(iter(frames.values()))
@@ -432,9 +386,8 @@ class MiniQMTProvider(DataProvider):
         period = self._normalize_period(frequency)
         start_str = self._format_time(start_date, period)
         end_str = self._format_time(end_date, period)
-        if self.auto_download:
-            xt.download_history_data(stock_code=security, period=period)
 
+        # 从 xtdata 本地缓存读取
         raw_df = self._fetch_local_data(
             xt,
             security=security,
@@ -444,8 +397,10 @@ class MiniQMTProvider(DataProvider):
             count=count,
             dividend_type="none",
         )
+
         if raw_df.empty:
-            return raw_df
+            logger.warning("MiniQMT: 标的 %s 的 %s 行情数据为空，可能尚未上市或当日停牌", security, period)
+            return pd.DataFrame()
 
         if fq == "pre":
             # Prefer xtquant built-in front-ratio (前复权) first, then anchor to ref date
@@ -708,10 +663,10 @@ class MiniQMTProvider(DataProvider):
         count: Optional[int],
         dividend_type: str,
     ) -> pd.DataFrame:
-        # 注意：QMT 的 get_local_data 在使用 count 参数时会跳过停牌日，
+        # 注意：xtdata.get_market_data_ex 在使用 count 参数时会跳过停牌日，
         # 导致与 JQData 行为不一致（JQData 会包含停牌日的数据）。
         #
-        # 解决方案：当同时指定 end_time 和 count 时，不传 count 给 QMT，
+        # 解决方案：当同时指定 end_time 和 count 时，不传 count 给 xtdata，
         # 而是先获取到 end_time 的完整数据，再用 tail(count) 截取。
         # 这样可以确保停牌日的数据也被包含在内。
         use_count_in_xt = count
@@ -721,24 +676,24 @@ class MiniQMTProvider(DataProvider):
 
         if end_time and count and not start_time:
             # 当没有 start_time 但有 end_time 和 count 时，
-            # 需要构造一个合理的 start_time，否则 QMT 不知道从哪开始获取
+            # 需要构造一个合理的 start_time，否则 xtdata 不知道从哪开始获取
             # 往前推 count + 30 天作为 start_time（多取一些以覆盖停牌等情况）
-            # 同时将 end_time 往后推几天，因为 QMT 在 end_time 是停牌日时不返回该天数据
+            # 同时将 end_time 往后推几天，因为 xtdata 在 end_time 是停牌日时不返回该天数据
             try:
                 end_dt = pd.to_datetime(end_time)
                 buffer_days = max(count * 2, 30)  # 取 count*2 和 30 的较大值
                 start_dt = end_dt - pd.Timedelta(days=buffer_days)
                 use_start_time = start_dt.strftime("%Y%m%d")
-                # 将 end_time 往后推 10 天，确保停牌日也能被包含（QMT 行为不一致，需要更大的缓冲）
+                # 将 end_time 往后推 10 天，确保停牌日也能被包含（xtdata 行为不一致，需要更大的缓冲）
                 use_end_time = (end_dt + pd.Timedelta(days=10)).strftime("%Y%m%d")
-                use_count_in_xt = -1  # 不让 QMT 处理 count
+                use_count_in_xt = -1  # 不让 xtdata 处理 count
                 logger.debug(
                     f"QMT _fetch_local_data: 构造 start_time={use_start_time}, end_time={use_end_time}(原{end_time}), count={count}"
                 )
             except Exception:
                 pass
         elif end_time and count:
-            # 有 start_time 的情况，也不让 QMT 处理 count
+            # 有 start_time 的情况，也不让 xtdata 处理 count
             # 同样需要将 end_time 往后推
             try:
                 end_dt = pd.to_datetime(end_time)
@@ -748,12 +703,12 @@ class MiniQMTProvider(DataProvider):
                 pass
 
         logger.debug(
-            f"QMT _fetch_local_data: 调用 xt.get_local_data(stock_list=[{security}], "
+            f"QMT _fetch_local_data: 调用 xt.get_market_data_ex(stock_list=[{security}], "
             f"count={use_count_in_xt or -1}, period={period}, "
             f"start_time={use_start_time}, end_time={end_time}, dividend_type={dividend_type})"
         )
         try:
-            data = xt.get_local_data(
+            data = xt.get_market_data_ex(
                 stock_list=[security],
                 count=use_count_in_xt or -1,
                 period=period,
@@ -781,6 +736,15 @@ class MiniQMTProvider(DataProvider):
         logger.debug(
             f"QMT _fetch_local_data: df.columns={list(df.columns)}, df.shape={df.shape}"
         )
+
+        # xt.get_local_data returns MultiIndex columns (code, field).
+        # Since we only requested one security, flatten to single-level columns,
+        # and drop any extra security-level that leaked into the result.
+        if isinstance(df.columns, pd.MultiIndex):
+            # Keep only columns belonging to the requested security
+            mask = df.columns.get_level_values(0) == security
+            df = df.loc[:, mask]
+            df.columns = df.columns.get_level_values(1)
 
         # xtquant 时间戳为毫秒级 UTC，需要转换到沪深时区（Asia/Shanghai）再处理
         if "time" not in df.columns:
@@ -1019,27 +983,20 @@ class MiniQMTProvider(DataProvider):
         end_date: Optional[Union[str, datetime]] = None,
         count: Optional[int] = None,
     ) -> List[datetime]:
-        kwargs = {"start_date": start_date, "end_date": end_date, "count": count}
-
-        def _fetch(kw: Dict[str, Any]) -> List[datetime]:
-            xt = self._ensure_xtdata()
-            start_str = self._format_time(kw.get("start_date"), "1d")
-            end_str = self._format_time(kw.get("end_date"), "1d")
-            data = xt.get_trading_dates(
-                self.market,
-                start_time=start_str,
-                end_time=end_str,
-                count=kw.get("count", -1) or -1,
-            )
-            # 注意：QMT 返回的时间戳是北京时间（本地时区），需要使用 fromtimestamp 而不是 pd.to_datetime
-            # pd.to_datetime(unit='ms') 会当作 UTC 时间处理，导致日期偏移
-            from datetime import datetime as dt
-
-            return [dt.fromtimestamp(ts / 1000.0) for ts in data]
-
-        return self._cache.cached_call(
-            "get_trade_days", kwargs, _fetch, result_type="list_date"
+        xt = self._ensure_xtdata()
+        start_str = self._format_time(start_date, "1d")
+        end_str = self._format_time(end_date, "1d")
+        data = xt.get_trading_dates(
+            self.market,
+            start_time=start_str,
+            end_time=end_str,
+            count=count or -1,
         )
+        # 注意：QMT 返回的时间戳是北京时间（本地时区），需要使用 fromtimestamp 而不是 pd.to_datetime
+        # pd.to_datetime(unit='ms') 会当作 UTC 时间处理，导致日期偏移
+        from datetime import datetime as dt
+
+        return [dt.fromtimestamp(ts / 1000.0) for ts in data]
 
     def get_trade_day(
         self, security: Union[str, List[str]], query_dt: Union[str, datetime]
@@ -1072,63 +1029,53 @@ class MiniQMTProvider(DataProvider):
         normalized_types = tuple(
             self._normalize_requested_security_type(item) for item in types
         )
-        kwargs = {"types": normalized_types, "date": date}
 
-        def _fetch(kw: Dict[str, Any]) -> Dict[str, Any]:
-            xt = self._ensure_xtdata()
-            sectors = {"stock": "沪深A股", "etf": "沪深ETF", "index": "沪深指数"}
-            rows = []
-            resolved_types = []
-            for requested_type in kw["types"]:
-                resolved = self._resolve_sector_type(requested_type)
-                if resolved and resolved not in resolved_types:
-                    resolved_types.append(resolved)
-            for sector_type, result_type in resolved_types:
-                sector = sectors.get(sector_type)
-                if not sector:
-                    continue
-                codes = xt.get_stock_list_in_sector(sector)
-                for code in codes:
-                    info = xt.get_instrument_detail(code)
-                    if not info or not isinstance(info, dict):
-                        rows.append(
-                            {
-                                "ts_code": code,
-                                "display_name": code,
-                                "name": code,
-                                "start_date": None,
-                                "end_date": None,
-                                "type": result_type,
-                            }
-                        )
-                        continue
+        xt = self._ensure_xtdata()
+        sectors = {"stock": "沪深A股", "etf": "沪深ETF", "index": "沪深指数"}
+        rows = []
+        resolved_types = []
+        for requested_type in normalized_types:
+            resolved = self._resolve_sector_type(requested_type)
+            if resolved and resolved not in resolved_types:
+                resolved_types.append(resolved)
+        for sector_type, result_type in resolved_types:
+            sector = sectors.get(sector_type)
+            if not sector:
+                continue
+            codes = xt.get_stock_list_in_sector(sector)
+            for code in codes:
+                info = xt.get_instrument_detail(code)
+                if not info or not isinstance(info, dict):
                     rows.append(
                         {
                             "ts_code": code,
-                            "display_name": info.get("InstrumentName", code),
-                            "name": info.get("InstrumentID", code),
-                            "start_date": pd.to_datetime(
-                                info.get("OpenDate"), errors="coerce"
-                            ),
-                            "end_date": pd.to_datetime(
-                                info.get("ExpireDate"), errors="coerce"
-                            ),
+                            "display_name": code,
+                            "name": code,
+                            "start_date": None,
+                            "end_date": None,
                             "type": result_type,
                         }
                     )
-            if not rows:
-                return {}
-            df = pd.DataFrame(rows).drop_duplicates("ts_code").set_index("ts_code")
-            return df.to_dict(orient="index")
-
-        data = self._cache.cached_call(
-            "get_all_securities", kwargs, _fetch, result_type="list_dict"
-        )
-        if not data:
+                    continue
+                rows.append(
+                    {
+                        "ts_code": code,
+                        "display_name": info.get("InstrumentName", code),
+                        "name": info.get("InstrumentID", code),
+                        "start_date": pd.to_datetime(
+                            info.get("OpenDate"), errors="coerce"
+                        ),
+                        "end_date": pd.to_datetime(
+                            info.get("ExpireDate"), errors="coerce"
+                        ),
+                        "type": result_type,
+                    }
+                )
+        if not rows:
             return pd.DataFrame(
                 columns=["display_name", "name", "start_date", "end_date", "type"]
             )
-        df = pd.DataFrame.from_dict(data, orient="index")
+        df = pd.DataFrame(rows).drop_duplicates("ts_code").set_index("ts_code")
         if not df.empty:
             df["qmt_code"] = df.index
             jq_codes = [self._to_jq_code(code) for code in df.index]
@@ -1149,12 +1096,7 @@ class MiniQMTProvider(DataProvider):
         try:
             xt = self._ensure_xtdata()
             normalized_symbol = self._normalize_security_code(index_symbol)
-            # 注释掉下载指数权重的逻辑，使用本地缓存数据
-            # if self.auto_download and hasattr(xt, "download_index_weight"):
-            #     try:
-            #         xt.download_index_weight()
-            #     except Exception as e:
-            #         logger.debug("下载指数权重失败: %s", e)
+            # 指数权重数据需提前通过 MiniQMTDownloader 下载
             # 获取指数成分股
             if not hasattr(xt, "get_index_weight"):
                 logger.warning("xtdata 不支持 get_index_weight 方法")
@@ -1400,29 +1342,22 @@ class MiniQMTProvider(DataProvider):
         start_date: Optional[Union[str, datetime, Date]] = None,
         end_date: Optional[Union[str, datetime, Date]] = None,
     ) -> List[Dict[str, Any]]:
-        kwargs = {"security": security, "start_date": start_date, "end_date": end_date}
-
-        def _fetch(kw: Dict[str, Any]) -> List[Dict[str, Any]]:
-            template_security = kw["security"]
-            normalized_security = self._normalize_security_code(template_security)
-            events = self._get_xt_split_dividend(
-                normalized_security,
-                start_date=kw.get("start_date"),
-                end_date=kw.get("end_date"),
-            )
-            standardized = [self._standardize_event(event) for event in events]
-            if not standardized:
-                return []
-            adapted: List[Dict[str, Any]] = []
-            for event in standardized:
-                converted = dict(event)
-                converted["security"] = self._format_like_template(
-                    event["security"],
-                    template_security,
-                )
-                adapted.append(converted)
-            return adapted
-
-        return self._cache.cached_call(
-            "get_split_dividend", kwargs, _fetch, result_type="list_dict"
+        template_security = security
+        normalized_security = self._normalize_security_code(template_security)
+        events = self._get_xt_split_dividend(
+            normalized_security,
+            start_date=start_date,
+            end_date=end_date,
         )
+        standardized = [self._standardize_event(event) for event in events]
+        if not standardized:
+            return []
+        adapted: List[Dict[str, Any]] = []
+        for event in standardized:
+            converted = dict(event)
+            converted["security"] = self._format_like_template(
+                event["security"],
+                template_security,
+            )
+            adapted.append(converted)
+        return adapted
